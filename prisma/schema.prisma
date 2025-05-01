@@ -1,0 +1,254 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id              String           @id @default(cuid())
+  name            String?
+  email           String?          @unique
+  emailVerified   DateTime?
+  image           String?
+  password        String?
+  role            UserRole         @default(LEARNER)
+  bio             String?          @db.Text
+  weeklyHours     Int?
+  level           UserLevel        @default(BEGINNER)
+  xpPoints        Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  accounts        Account[]
+  sessions        Session[]
+  userSkills      UserSkill[]
+  userBadges      UserBadge[]
+  progressRecords ProgressRecord[]
+  discussions     Discussion[]
+  comments        Comment[]
+  roadmaps        Roadmap[]        @relation("UserRoadmaps")
+  createdRoadmaps Roadmap[]        @relation("CreatedRoadmaps")
+}
+
+enum UserRole {
+  LEARNER
+  CURATOR
+  ADMIN
+}
+
+enum UserLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+model Skill {
+  id          String      @id @default(cuid())
+  name        String      @unique
+  description String      @db.Text
+  image       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  userSkills  UserSkill[]
+  roadmaps    Roadmap[]
+  modules     Module[]
+}
+
+model UserSkill {
+  id        String   @id @default(cuid())
+  userId    String
+  skillId   String
+  interest  Int      @default(0) // 1-5 scale
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill     Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skillId])
+}
+
+model Badge {
+  id          String      @id @default(cuid())
+  name        String      @unique
+  description String      @db.Text
+  image       String
+  criteria    String      @db.Text // JSON string defining criteria
+  xpValue     Int
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  userBadges  UserBadge[]
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String
+  badgeId   String
+  awardedAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+}
+
+model Roadmap {
+  id          String       @id @default(cuid())
+  title       String
+  description String       @db.Text
+  skillId     String
+  creatorId   String
+  duration    Int // in weeks
+  difficulty  RoadmapLevel
+  isPublished Boolean      @default(false)
+  isTemplate  Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  skill       Skill        @relation(fields: [skillId], references: [id])
+  creator     User         @relation("CreatedRoadmaps", fields: [creatorId], references: [id])
+  users       User[]       @relation("UserRoadmaps")
+  modules     Module[]
+  discussions Discussion[]
+}
+
+enum RoadmapLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+model Module {
+  id             String           @id @default(cuid())
+  title          String
+  description    String           @db.Text
+  roadmapId      String
+  skillId        String
+  weekNumber     Int
+  orderInWeek    Int
+  estimatedHours Int
+  xpPoints       Int
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  roadmap        Roadmap          @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  skill          Skill            @relation(fields: [skillId], references: [id])
+  resources      Resource[]
+  topics         Topic[]
+  progress       ProgressRecord[]
+}
+
+model Topic {
+  id          String     @id @default(cuid())
+  title       String
+  description String     @db.Text
+  moduleId    String
+  orderIndex  Int
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  module      Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  resources   Resource[]
+}
+
+model Resource {
+  id          String       @id @default(cuid())
+  title       String
+  description String       @db.Text
+  type        ResourceType
+  url         String
+  duration    Int? // in minutes
+  moduleId    String?
+  topicId     String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  module      Module?      @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  topic       Topic?       @relation(fields: [topicId], references: [id], onDelete: SetNull)
+}
+
+enum ResourceType {
+  VIDEO
+  ARTICLE
+  QUIZ
+  PROJECT
+  BOOK
+  COURSE
+  OTHER
+}
+
+model ProgressRecord {
+  id          String         @id @default(cuid())
+  userId      String
+  moduleId    String
+  status      ProgressStatus @default(NOT_STARTED)
+  notes       String?        @db.Text
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module      Module         @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleId])
+}
+
+enum ProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+model Discussion {
+  id        String    @id @default(cuid())
+  title     String
+  content   String    @db.Text
+  userId    String
+  roadmapId String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roadmap   Roadmap   @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  comments  Comment[]
+}
+
+model Comment {
+  id           String     @id @default(cuid())
+  content      String     @db.Text
+  userId       String
+  discussionId String
+  parentId     String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  parent       Comment?   @relation("CommentReplies", fields: [parentId], references: [id])
+  replies      Comment[]  @relation("CommentReplies")
+}
